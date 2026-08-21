@@ -1,111 +1,160 @@
-import os
-import tempfile
+import io
 import streamlit as st
 from PIL import Image
 from PyPDF2 import PdfMerger
 from pptx import Presentation
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-from reportlab.lib import colors
 import openpyxl
 
-st.set_page_config(page_title="Universal File Merger", page_icon="📑")
-st.title("📑 Universal File Merger")
-st.write("Upload PDFs, Excel sheets, PowerPoints, or PNGs to combine them into one final PDF.")
+st.set_page_config(page_title="Multi-Format File Merger", page_icon="🧰")
+st.title("🧰 Multi-Format File Merger")
+st.write("Select a file type below to merge your files into their original format.")
 
-uploaded_files = st.file_uploader(
-    "Choose files to merge", 
-    type=["pdf", "xlsx", "pptx", "png"], 
-    accept_multiple_files=True
-)
+# Create 4 distinct tabs for each file type
+tab_pdf, tab_png, tab_ppt, tab_excel = st.tabs(["📄 PDF Merger", "🖼️ PNG Merger", "📊 PPT Merger", "📊 Excel Merger"])
 
-def excel_to_pdf(file_bytes, temp_pdf_path):
-    wb = openpyxl.load_workbook(file_bytes, data_only=True)
-    sheet = wb.active
-    data = []
-    for row in sheet.iter_rows(values_only=True):
-        if any(row):
-            data.append([str(cell) if cell is not None else "" for cell in row])
-    if not data:
-        data = [["Empty Sheet"]]
-
-    doc = SimpleDocTemplate(temp_pdf_path, pagesize=letter)
-    t = Table(data)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-    ]))
-    doc.build([t])
-
-def image_to_pdf(file_bytes, temp_pdf_path):
-    image = Image.open(file_bytes)
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    image.save(temp_pdf_path, "PDF", resolution=100.0)
-
-def ppt_to_pdf_text(file_bytes, temp_pdf_path):
-    prs = Presentation(file_bytes)
-    data = [["Slide #", "Extracted Content"]]
-    for idx, slide in enumerate(prs.slides, start=1):
-        text_runs = []
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                for paragraph in shape.text_frame.paragraphs:
-                    text_runs.append(paragraph.text)
-        slide_text = "\n".join(text_runs).strip()
-        data.append([f"Slide {idx}", slide_text if slide_text else "[No Text Content]"])
-
-    doc = SimpleDocTemplate(temp_pdf_path, pagesize=letter)
-    t = Table(data, colWidths=[80, 400])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.navy),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-    ]))
-    doc.build([t])
-
-if uploaded_files:
-    if st.button("Merge Files into PDF", type="primary"):
-        merger = PdfMerger()
-        temp_dir = tempfile.mkdtemp()
-        temp_files = []
-
-        try:
-            for i, file in enumerate(uploaded_files):
-                ext = os.path.splitext(file.name)[1].lower()
-                temp_pdf_path = os.path.join(temp_dir, f"converted_{i}.pdf")
-
-                if ext == ".pdf":
-                    merger.append(file)
-                elif ext == ".png":
-                    image_to_pdf(file, temp_pdf_path)
-                    merger.append(temp_pdf_path)
-                    temp_files.append(temp_pdf_path)
-                elif ext == ".xlsx":
-                    excel_to_pdf(file, temp_pdf_path)
-                    merger.append(temp_pdf_path)
-                    temp_files.append(temp_pdf_path)
-                elif ext == ".pptx":
-                    ppt_to_pdf_text(file, temp_pdf_path)
-                    merger.append(temp_pdf_path)
-                    temp_files.append(temp_pdf_path)
-
-            output_pdf_path = os.path.join(temp_dir, "merged_output.pdf")
-            merger.write(output_pdf_path)
-            merger.close()
-
-            with open(output_pdf_path, "rb") as f:
-                st.success("Files merged successfully into PDF!")
+# ---------------------------------------------------------
+# 1. PDF MERGER
+# ---------------------------------------------------------
+with tab_pdf:
+    st.subheader("Merge PDFs into a single PDF")
+    pdf_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True, key="pdf_uploader")
+    
+    if pdf_files and len(pdf_files) >= 2:
+        if st.button("Merge PDFs", type="primary", key="btn_pdf"):
+            try:
+                merger = PdfMerger()
+                for pdf in pdf_files:
+                    merger.append(pdf)
+                
+                output = io.BytesIO()
+                merger.write(output)
+                merger.close()
+                output.seek(0)
+                
+                st.success("PDFs merged successfully!")
                 st.download_button(
-                    label="Download Master PDF",
-                    data=f.read(),
+                    label="Download Merged PDF",
+                    data=output,
                     file_name="merged_document.pdf",
                     mime="application/pdf"
                 )
+            except Exception as e:
+                st.error(f"Error merging PDFs: {e}")
+    elif pdf_files:
+        st.info("Please upload at least 2 PDF files to merge.")
 
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+# ---------------------------------------------------------
+# 2. PNG MERGER
+# ---------------------------------------------------------
+with tab_png:
+    st.subheader("Stitch PNGs into a single long PNG")
+    png_files = st.file_uploader("Upload PNG images", type=["png"], accept_multiple_files=True, key="png_uploader")
+    
+    if png_files and len(png_files) >= 2:
+        if st.button("Merge PNGs", type="primary", key="btn_png"):
+            try:
+                images = [Image.open(img) for img in png_files]
+                
+                # Combine images vertically
+                max_width = max(img.width for img in images)
+                total_height = sum(img.height for img in images)
+                
+                merged_image = Image.new("RGBA", (max_width, total_height))
+                
+                y_offset = 0
+                for img in images:
+                    merged_image.paste(img, (0, y_offset))
+                    y_offset += img.height
+                
+                output = io.BytesIO()
+                merged_image.save(output, format="PNG")
+                output.seek(0)
+                
+                st.success("PNGs merged successfully!")
+                st.download_button(
+                    label="Download Merged PNG",
+                    data=output,
+                    file_name="merged_image.png",
+                    mime="image/png"
+                )
+            except Exception as e:
+                st.error(f"Error merging PNGs: {e}")
+    elif png_files:
+        st.info("Please upload at least 2 PNG files to merge.")
+
+# ---------------------------------------------------------
+# 3. PPT MERGER
+# ---------------------------------------------------------
+with tab_ppt:
+    st.subheader("Merge PowerPoint slides into a single PPTX")
+    ppt_files = st.file_uploader("Upload PPTX files", type=["pptx"], accept_multiple_files=True, key="ppt_uploader")
+    
+    if ppt_files and len(ppt_files) >= 2:
+        if st.button("Merge PPTs", type="primary", key="btn_ppt"):
+            try:
+                base_prs = Presentation(ppt_files[0])
+                
+                for ppt in ppt_files[1:]:
+                    sub_prs = Presentation(ppt)
+                    for slide in sub_prs.slides:
+                        blank_layout = base_prs.slide_layouts[6]
+                        new_slide = base_prs.slides.add_slide(blank_layout)
+                        for shape in slide.shapes:
+                            el = shape.element
+                            new_slide.shapes._spTree.insert_element_before(el, 'p:extLst')
+                
+                output = io.BytesIO()
+                base_prs.save(output)
+                output.seek(0)
+                
+                st.success("PowerPoint files merged successfully!")
+                st.download_button(
+                    label="Download Merged PPTX",
+                    data=output,
+                    file_name="merged_presentation.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )
+            except Exception as e:
+                st.error(f"Error merging PPTs: {e}")
+    elif ppt_files:
+        st.info("Please upload at least 2 PPTX files to merge.")
+
+# ---------------------------------------------------------
+# 4. EXCEL MERGER
+# ---------------------------------------------------------
+with tab_excel:
+    st.subheader("Combine Excel sheets into a single Excel workbook")
+    excel_files = st.file_uploader("Upload Excel files (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="excel_uploader")
+    
+    if excel_files and len(excel_files) >= 2:
+        if st.button("Merge Excel Files", type="primary", key="btn_excel"):
+            try:
+                merged_wb = openpyxl.Workbook()
+                # Remove default sheet
+                merged_wb.remove(merged_wb.active)
+                
+                for idx, fx in enumerate(excel_files, start=1):
+                    wb = openpyxl.load_workbook(fx, data_only=True)
+                    for sheet_name in wb.sheetnames:
+                        source_sheet = wb[sheet_name]
+                        new_sheet_title = f"File{idx}_{sheet_name}"
+                        target_sheet = merged_wb.create_sheet(title=new_sheet_title[:31]) # Max sheet name length is 31
+                        
+                        for row in source_sheet.iter_rows(values_only=True):
+                            target_sheet.append(row)
+                
+                output = io.BytesIO()
+                merged_wb.save(output)
+                output.seek(0)
+                
+                st.success("Excel files merged successfully!")
+                st.download_button(
+                    label="Download Merged Excel",
+                    data=output,
+                    file_name="merged_sheets.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Error merging Excel files: {e}")
+    elif excel_files:
+        st.info("Please upload at least 2 Excel files to merge.")
