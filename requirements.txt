@@ -1,6 +1,5 @@
 streamlit
 PyPDF2
-openpyxl
-reportlab
-python-pptx
 Pillow
+python-pptx
+openpyxl
