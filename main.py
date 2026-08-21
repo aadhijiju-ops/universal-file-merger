@@ -11,7 +11,7 @@ import openpyxl
 
 st.set_page_config(page_title="Universal File Merger", page_icon="📑")
 st.title("📑 Universal File Merger")
-st.write("Upload PDFs, Excel sheets, PowerPoints, or PNGs to combine them into one PDF.")
+st.write("Upload PDFs, Excel sheets, PowerPoints, or PNGs to combine them into one final PDF.")
 
 uploaded_files = st.file_uploader(
     "Choose files to merge", 
@@ -99,9 +99,9 @@ if uploaded_files:
             merger.close()
 
             with open(output_pdf_path, "rb") as f:
-                st.success("Files merged successfully!")
+                st.success("Files merged successfully into PDF!")
                 st.download_button(
-                    label="Download Merged PDF",
+                    label="Download Master PDF",
                     data=f.read(),
                     file_name="merged_document.pdf",
                     mime="application/pdf"
